@@ -26,6 +26,7 @@ a real folder at `skills/<category>/<name>/SKILL.md`. Trigger words (`says:`) an
 | `godot-multiplayer` | "multiplayer", "RPC", "networked", `MultiplayerSpawner`; `@rpc` |
 | `godot-export` | "export Godot", "build for web/windows", `export_presets.cfg` |
 | `godot-csharp` | "Godot C#", "GodotSharp", "C# signals in Godot"; `*.cs` + `*.csproj` in a Godot project |
+| `godot-gdscript-headless-testing` | "headless test", "run tests from CLI", `godot --headless --script`, CI job for `.gd` tests |
 
 ### Unity (`skills/unity/`, target Unity 6.3 LTS / 6000.3)
 

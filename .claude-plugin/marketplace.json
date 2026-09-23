@@ -27,6 +27,7 @@
         "./skills/godot/godot-multiplayer",
         "./skills/godot/godot-export",
         "./skills/godot/godot-csharp",
+        "./skills/godot/godot-gdscript-headless-testing",
         "./skills/unity/unity-csharp-scripting",
         "./skills/unity/unity-input-system",
         "./skills/unity/unity-physics",
@@ -116,7 +117,8 @@
         "./skills/godot/godot-audio",
         "./skills/godot/godot-multiplayer",
         "./skills/godot/godot-export",
-        "./skills/godot/godot-csharp"
+        "./skills/godot/godot-csharp",
+        "./skills/godot/godot-gdscript-headless-testing"
       ]
     },
     {
