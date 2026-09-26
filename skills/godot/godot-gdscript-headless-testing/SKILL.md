@@ -32,17 +32,32 @@ process exit code CI can act on. Targets **Godot 4.7** headless CLI.
 1. **Confirm the binary resolves headless.** Godot 4.x ships `--headless` built in
    (no export template needed); run `godot --headless --version` and confirm it
    prints a version string, not a GUI window.
-2. **Write the runner as a `SceneTree` script, not a `Node` scene.** A `SceneTree`
+2. **On a fresh checkout, import before running tests.** `.godot/` is normally not
+   committed, so a clean checkout has no import cache: `class_name` types fail to
+   resolve (`Identifier "X" not declared in the current scope`) and imported
+   assets fail to load (`No loader found for resource: res://...`). Run
+   `godot --headless --path <project_dir> --import` once first, in CI and locally.
+3. **Write the runner as a `SceneTree` script, not a `Node` scene.** A `SceneTree`
    script's `_initialize()` runs once before any frame — enough for pure-logic
    tests and no `.tscn` required to launch.
-3. **Track pass/fail counts yourself and call `quit(<code>)` explicitly.** Godot
-   does not turn the process exit code non-zero on `push_error()` or a failed
-   `assert()` by itself — the runner must count failures and call `quit(1)`.
-4. **Invoke with `godot --headless --path <project_dir> --script res://<runner>.gd`**
+4. **Track pass/fail counts yourself and call `quit(<code>)` explicitly. Do not use
+   bare `assert()` to fail a test.** Godot does not turn the process exit code
+   non-zero on `push_error()` by itself — the runner must count failures and call
+   `quit(1)`. Worse, a failed `assert()` inside `_initialize()` (official/debug
+   build) prints `SCRIPT ERROR: Assertion failed` and **stops execution before
+   `quit()` runs**, so the process never exits and CI hangs until its own timeout.
+   Use an `assert_eq()`-style helper that records the failure and keeps going.
+5. **Invoke with `godot --headless --path <project_dir> --script res://<runner>.gd`**
    and read the **process exit code**, not just stdout, from the shell or CI step.
-5. **Redirect stdout and stderr to files when scripting the invocation from a
+   `--script` accepts both a `res://`-relative path and an absolute filesystem
+   path (e.g. a runner outside the project folder); either works.
+6. **Redirect stdout and stderr to files when scripting the invocation from a
    wrapper shell** (PowerShell, some CI runners). `push_error()` output goes to
    stderr and can be dropped or reordered when only stdout is captured live.
+7. **Add a step timeout in CI.** Even with the `assert()` pitfall avoided, an
+   `await` that never resolves (Pattern #2) hangs the runner forever; a
+   `timeout-minutes` on the CI step is a backstop CI-side, not a substitute for
+   backing every `await` with a timeout node.
 
 ## Patterns
 
@@ -82,9 +97,20 @@ res://test_runner.gd` prints `Results: N passed, M failed` to stdout, routes
 ```gdscript
 extends SceneTree
 
+var passed := 0
+var failed := 0
+
 func _initialize() -> void:
     await run_tests()
-    quit(0)
+    print("Results: %d passed, %d failed" % [passed, failed])
+    quit(1 if failed > 0 else 0)   # track and report failures here too
+
+func assert_eq(actual, expected, label: String) -> void:
+    if actual == expected:
+        passed += 1
+    else:
+        failed += 1
+        push_error("FAIL %s: expected %s, got %s" % [label, expected, actual])
 
 func run_tests() -> void:
     var timer_node := Timer.new()
@@ -92,23 +118,32 @@ func run_tests() -> void:
     timer_node.start(0.1)
     await timer_node.timeout
     # assertions here can rely on the node having been in the tree for a frame
+    assert_eq(timer_node.is_stopped(), true, "timer_fires_once")
     timer_node.queue_free()
 ```
 
 `_initialize()` may `await`, which is what makes this pattern work for anything
 that needs a node to actually enter the tree, a timer to fire, or a signal to
 emit — none of which happen before the engine has processed at least one frame.
+Use the same `passed`/`failed` counter and `assert_eq()` helper as Pattern #1;
+a version of this pattern that always calls `quit(0)` can never fail a build.
 
 ### 3. CI step (GitHub Actions) that gates on the exit code
 
 ```yaml
+- name: Import project (populates .godot/ on a fresh checkout)
+  run: godot --headless --path . --import
 - name: Run GDScript tests
+  timeout-minutes: 5
   run: godot --headless --path . --script res://test_runner.gd
 ```
 
-No extra flag is needed — the runner already fails the job on a non-zero exit
-code from `run:`; the discipline lives entirely in the runner script's `quit()`
-call, not in the CI configuration.
+The import step is required on a clean checkout — without it, `class_name` types
+and imported resources fail to resolve. No extra flag is needed for the test
+step itself: the runner already fails the job on a non-zero exit code from
+`run:`; the discipline lives in the runner script's `quit()` call, not in the CI
+configuration. `timeout-minutes` is a backstop against a hung `await` (see
+Pitfalls), not a substitute for backing every `await` with a timeout node.
 
 ## Pitfalls
 
@@ -116,8 +151,21 @@ call, not in the CI configuration.
   `quit(1)`. Track failures yourself and call `quit()` explicitly; do not rely on
   `assert()` or `push_error()` alone to change the process exit code.
 - **Script "does nothing" or opens the editor window** → missing `--headless`, or
-  the script path is wrong. `--script` takes a `res://`-relative path resolved
-  against `--path <project_dir>`, not an absolute filesystem path.
+  the script path is wrong. `--script` accepts a `res://`-relative path resolved
+  against `--path <project_dir>`, and also an absolute filesystem path — both work.
+- **`Identifier "X" not declared in the current scope`, or a resource fails to
+  load, only on a fresh checkout** → `.godot/` (the import cache) is normally not
+  committed, so `class_name` types and imported assets aren't resolved yet. Run
+  `godot --headless --path <project_dir> --import` once before the test step.
+- **A failed `assert()` hangs instead of failing the test** → in an official/debug
+  build, a failed `assert()` inside `_initialize()` prints `SCRIPT ERROR:
+  Assertion failed` and stops that function before it reaches `quit()` — the
+  process never exits and CI waits until its own timeout. Use an `assert_eq()`
+  counter (Pattern #1) instead of bare `assert()` in test runners.
+- **Exit code stays 0 despite failed assertions** → the runner never called
+  `quit(1)`, or (Pattern #2) it always calls `quit(0)` regardless of failures.
+  Track failures yourself and call `quit()` explicitly with a code that reflects
+  them; do not rely on `assert()` or `push_error()` alone to change the exit code.
 - **`_initialize()` runs before nodes, timers, or signals exist** → logic that
   needs a frame to have processed must `await` a signal or a timer before
   asserting; see Pattern #2.
@@ -127,7 +175,8 @@ call, not in the CI configuration.
   process exits, instead of trusting the live console.
 - **Runner never terminates** → a `SceneTree` script keeps running until
   something calls `quit()`. A test that `await`s a signal that never fires hangs
-  the job forever — always back an `await` with a timeout node as a fallback.
+  the job forever — always back an `await` with a timeout node as a fallback, and
+  set `timeout-minutes` on the CI step as a backstop.
 
 ## Related skills
 
