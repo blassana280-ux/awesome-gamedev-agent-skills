@@ -113,7 +113,11 @@ func assert_eq(actual, expected, label: String) -> void:
         push_error("FAIL %s: expected %s, got %s" % [label, expected, actual])
 
 func run_tests() -> void:
+    # `root` is not inside the tree yet during _initialize(): a Timer started now
+    # errors ("not inside the tree") and its `timeout` never fires. Wait one frame.
+    await process_frame
     var timer_node := Timer.new()
+    timer_node.one_shot = true   # default Timer restarts after timeout
     root.add_child(timer_node)
     timer_node.start(0.1)
     await timer_node.timeout
@@ -147,9 +151,6 @@ Pitfalls), not a substitute for backing every `await` with a timeout node.
 
 ## Pitfalls
 
-- **Exit code stays 0 despite failed assertions** → the runner never called
-  `quit(1)`. Track failures yourself and call `quit()` explicitly; do not rely on
-  `assert()` or `push_error()` alone to change the process exit code.
 - **Script "does nothing" or opens the editor window** → missing `--headless`, or
   the script path is wrong. `--script` accepts a `res://`-relative path resolved
   against `--path <project_dir>`, and also an absolute filesystem path — both work.
@@ -168,7 +169,9 @@ Pitfalls), not a substitute for backing every `await` with a timeout node.
   them; do not rely on `assert()` or `push_error()` alone to change the exit code.
 - **`_initialize()` runs before nodes, timers, or signals exist** → logic that
   needs a frame to have processed must `await` a signal or a timer before
-  asserting; see Pattern #2.
+  asserting; see Pattern #2. `root` itself is not inside the tree yet, so a
+  `Timer` added and started there errors and its `timeout` never fires (the
+  runner hangs) — `await process_frame` first.
 - **Output looks empty or out of order from a wrapper shell** → some shells
   (PowerShell in particular) can reorder or drop a native process's live
   stdout/stderr. Redirect both streams to files and read the files after the
