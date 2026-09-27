@@ -3,8 +3,8 @@
 # awesome-gamedev-agent-skills
 
 <p align="center">
-  <img src="docs/assets/banner.png" width="820"
-       alt="awesome-gamedev-agent-skills — game-dev skills for AI coding agents. 73 skills and a router across 10 engines, including an art-direction and asset-production workflow.">
+  <img src="docs/assets/awesome-gamedev-agent-skills-banner.png" width="820"
+       alt="awesome-gamedev-agent-skills — game-dev skills for AI coding agents. 74 skills and a router across 10 engines, including an art-direction and asset-production workflow.">
 </p>
 
 **74 game-dev skills for your AI coding agent — install once, and a router loads the

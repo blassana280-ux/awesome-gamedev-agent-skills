@@ -28,7 +28,7 @@ The [`skills` CLI](https://www.npmjs.com/package/skills) is the package manager 
 Skills ecosystem. It auto-detects your agent(s) and writes skills to each one's directory:
 
 ```bash
-# install the router + all 73 skills into whatever agent(s) you have
+# install the router + all 74 skills into whatever agent(s) you have
 npx skills add gamedev-skills/awesome-gamedev-agent-skills
 
 # preview without installing
